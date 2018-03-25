@@ -8,7 +8,13 @@ load(":providers.bzl",
      "CcSkylarkApiProviderHacked",
 )
 
+load(":tools.bzl",
+     "tools",
+)
+
 load(":set.bzl", "set")
+
+load("@bazel_skylib//:lib.bzl", "paths")
 
 def cc_headers(ctx):
   """Bring in scope the header files of dependencies, if any.
@@ -94,9 +100,20 @@ Example:
 """
 
 def _cc_haskell_import(ctx):
+  if ctx.file.dep.extension == "so":
+    sym = ctx.file.dep
+  else:
+    sym = ctx.actions.declare_file("lib{}.so".format(ctx.file.dep.basename))
+  rel_target = paths.relativize(ctx.file.dep.path, sym.dirname)
+  ctx.actions.run(
+    inputs = [ctx.file.dep],
+    outputs = [sym],
+    executable = "ln",
+    arguments = ["-s", rel_target, sym.path],
+  )
   if HaskellBuildInfo in ctx.attr.dep:
     return [DefaultInfo(
-      files = set.to_depset(ctx.attr.dep[HaskellBuildInfo].dynamic_libraries)
+      files = depset([sym])
     )]
   else:
     fail("{0} has to provide HaskellBuildInfo".format(ctx.attr.dep.label.name))
@@ -105,6 +122,7 @@ cc_haskell_import = rule(
   _cc_haskell_import,
   attrs = {
     "dep": attr.label(
+      single_file = True,
       doc = "Target providing a `HaskellBuildInfo`, such as `haskell_library`."
     ),
   },
